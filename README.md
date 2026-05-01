@@ -1,0 +1,1 @@
+# huggingface-computer-vision-course
