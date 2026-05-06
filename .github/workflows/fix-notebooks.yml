@@ -1,0 +1,68 @@
+name: Fix Notebook Widget Metadata
+
+on:
+  push:
+    paths:
+      - '**.ipynb'
+
+jobs:
+  fix-notebooks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need full history and a token that can push back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fix widget metadata in notebooks
+        run: |
+          python <<'EOF'
+          import json
+          import pathlib
+
+          changed = []
+          for nb_path in pathlib.Path(".").rglob("*.ipynb"):
+              if ".ipynb_checkpoints" in str(nb_path):
+                  continue
+
+              with open(nb_path, "r", encoding="utf-8") as f:
+                  nb = json.load(f)
+
+              widgets = nb.get("metadata", {}).get("widgets")
+              if not widgets:
+                  continue
+
+              modified = False
+              for key, value in widgets.items():
+                  if isinstance(value, dict) and "state" not in value:
+                      value["state"] = {}
+                      modified = True
+
+              if modified:
+                  with open(nb_path, "w", encoding="utf-8") as f:
+                      json.dump(nb, f, indent=1, ensure_ascii=False)
+                  changed.append(str(nb_path))
+
+          print(f"Fixed {len(changed)} notebook(s):")
+          for c in changed:
+              print(f"  - {c}")
+          EOF
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Auto-fix notebook widget metadata"
+            git push
+          fi
